@@ -39,3 +39,17 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# secrets
+.env
+out/
+
+# Gradle output inside local modules (BuildConfig can contain the API key)
+modules/**/android/build/
+modules/**/android/.gradle/
+modules/**/android/.cxx/
+
+# private planning notes (kept local only)
+IDEAS.md
+SILENT_RUN_SPEC.md
+NEXT_STEPS.md

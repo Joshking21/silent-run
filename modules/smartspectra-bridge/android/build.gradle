@@ -1,0 +1,45 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.smartspectrabridge'
+version = '0.1.0'
+
+expoModule {
+  canBePublished false
+}
+
+// Read PRESAGE_API_KEY from the project-root .env (gitignored) or the
+// environment, and bake it into BuildConfig. Keeps the key out of the JS bundle.
+def readPresageKey() {
+  def fromEnv = System.getenv('PRESAGE_API_KEY')
+  if (fromEnv) return fromEnv
+  def envFile = new File(rootProject.projectDir.parentFile, '.env')
+  if (envFile.exists()) {
+    def line = envFile.readLines().find { it.trim().startsWith('PRESAGE_API_KEY=') }
+    if (line) return line.substring(line.indexOf('=') + 1).trim().replaceAll(/^["']|["']$/, '')
+  }
+  return ''
+}
+
+android {
+  namespace "expo.modules.smartspectrabridge"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+    // SmartSpectra requires API 28+.
+    minSdkVersion 28
+    buildConfigField "String", "PRESAGE_API_KEY", "\"${readPresageKey()}\""
+  }
+  buildFeatures {
+    buildConfig true
+  }
+}
+
+dependencies {
+  implementation 'com.presagetech:smartspectra:3.5.0'
+  implementation 'androidx.camera:camera-view:1.6.0'
+  implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.10.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+}
