@@ -15,6 +15,26 @@ export interface ConfigureOptions {
   faceMetrics?: boolean;
   /** Pulse / HRV. */
   cardioMetrics?: boolean;
+  /**
+   * Feed the SDK from our own throttled CameraX capture (default true).
+   * Bounded memory on low-RAM phones; false = SDK owns the camera.
+   */
+  customCapture?: boolean;
+  /** Camera rate + send cap for custom capture (default 30). */
+  maxFps?: number;
+  /** Target analysis resolution for custom capture (default 640x480). */
+  captureWidth?: number;
+  captureHeight?: number;
+}
+
+export interface PipelineStats {
+  mode: 'custom' | 'sdk-camera';
+  sent?: number;
+  throttled?: number;
+  rejected?: number;
+  lastReject?: string | null;
+  avgSendMs?: number;
+  nativeHeapMb: number;
 }
 
 export interface DeviceReadiness {
@@ -37,6 +57,7 @@ export interface SmartSpectraBridgeModule {
   start(): Promise<void>;
   stop(): Promise<void>;
   checkDeviceReadiness(): Promise<DeviceReadiness>;
+  getPipelineStats(): PipelineStats;
   addListener<K extends keyof Events>(event: K, listener: Events[K]): EventSubscription;
 }
 

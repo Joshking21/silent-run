@@ -15,6 +15,19 @@ interface Props {
   onComplete: (b: Baseline) => void;
   onUseMock: () => void;
   onBack: () => void;
+  /** Restart the live sensor after the SDK ended a session. */
+  onRetry?: () => void;
+}
+
+function sdkErrorMessage(code: string, message: string): string {
+  switch (code) {
+    case 'SUSTAINED_LOW_FRAME_RATE':
+      return 'The camera ran too slowly to read your pulse. Move to brighter light, close other apps, then try again.';
+    case 'METRIC_NOT_AUTHORIZED':
+      return 'Your Presage key is not authorised for one of the requested measurements.';
+    default:
+      return `${code}: ${message}`;
+  }
 }
 
 /** Diegetic, actionable wording for each SDK quality code. */
@@ -54,7 +67,7 @@ export function qualityMessage(q: QualityCode, hint: string): string {
   }
 }
 
-export function CalibrationScreen({ sourceKind, sourceError, onComplete, onUseMock, onBack }: Props) {
+export function CalibrationScreen({ sourceKind, sourceError, onComplete, onUseMock, onBack, onRetry }: Props) {
   const s = useSignals();
   const calibrator = useRef(new Calibrator());
   const [progress, setProgress] = useState<CalibrationProgress>(calibrator.current.progress());
@@ -109,6 +122,14 @@ export function CalibrationScreen({ sourceKind, sourceError, onComplete, onUseMo
         <Panel style={{ borderColor: COLORS.danger }}>
           <Text style={[styles.status, { color: COLORS.danger }]}>Camera could not start</Text>
           <Body muted>{sourceError}</Body>
+          <Button label="USE SIMULATED SIGNALS" variant="ghost" onPress={onUseMock} />
+        </Panel>
+      ) : s.lastError && s.processing !== 'RUNNING' ? (
+        // The SDK ended the session itself (e.g. sustained low frame rate).
+        <Panel style={{ borderColor: COLORS.danger }}>
+          <Text style={[styles.status, { color: COLORS.danger }]}>Sensor stopped</Text>
+          <Body muted>{sdkErrorMessage(s.lastError.code, s.lastError.message)}</Body>
+          {onRetry ? <Button label="TRY AGAIN" onPress={onRetry} /> : null}
           <Button label="USE SIMULATED SIGNALS" variant="ghost" onPress={onUseMock} />
         </Panel>
       ) : (

@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": ["android.permission.CAMERA", "android.permission.INTERNET"],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "plugins": [
       "expo-dev-client",

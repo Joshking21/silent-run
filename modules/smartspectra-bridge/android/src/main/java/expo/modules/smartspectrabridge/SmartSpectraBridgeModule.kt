@@ -1,8 +1,12 @@
 package expo.modules.smartspectrabridge
 
 import android.os.SystemClock
+import androidx.camera.core.Preview
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import com.presagetech.smartspectra.CameraSelection
+import com.presagetech.smartspectra.CustomInput
+import com.presagetech.smartspectra.FrameTransform
 import com.presagetech.smartspectra.ProcessingStatus
 import com.presagetech.smartspectra.SmartSpectraConfig
 import com.presagetech.smartspectra.SmartSpectraError
@@ -30,6 +34,15 @@ class ConfigureOptions : Record {
   @Field val faceMetrics: Boolean = true
   /** Request pulse/HRV/arterial trace. */
   @Field val cardioMetrics: Boolean = true
+  /**
+   * Feed frames from our own throttled CameraX capture (bounded memory) instead
+   * of letting the SDK own the camera. See ThrottledCapture.
+   */
+  @Field val customCapture: Boolean = true
+  /** Camera rate (pinned via AE target range) and send cap for custom capture. */
+  @Field val maxFps: Int = 30
+  @Field val captureWidth: Int = 640
+  @Field val captureHeight: Int = 480
 }
 
 /**
@@ -48,6 +61,16 @@ class SmartSpectraBridgeModule : Module() {
   private var metricsJob: Job? = null
   private var observersAttached = false
   private var configured = false
+
+  // Custom (app-owned) capture state.
+  private var options = ConfigureOptions()
+  private var customInput: CustomInput? = null
+  private var capture: ThrottledCapture? = null
+
+  /** Keeps the SDK's own preview binding in sync in SDK-camera mode. */
+  private val previewSync: (Preview.SurfaceProvider?) -> Unit = { sp ->
+    if (customInput == null) sdk.config.previewSurfaceProvider = sp
+  }
 
   // Last-emitted state, for change detection and throttling.
   private var lastFastAt = 0L
@@ -92,7 +115,28 @@ class SmartSpectraBridgeModule : Module() {
         } catch (e: SmartSpectraException) {
           throw toCoded(e.error)
         }
+        val input = customInput
+        if (input != null) {
+          val owner = appContext.currentActivity as? LifecycleOwner
+            ?: throw CodedException("E_NO_ACTIVITY", "No foreground activity to bind the camera to.", null)
+          val c = ThrottledCapture(input, options.maxFps, options.captureWidth, options.captureHeight)
+          try {
+            c.start(owner, appContext.reactContext ?: throw IllegalStateException("No context"))
+            capture = c
+          } catch (t: Throwable) {
+            c.stop()
+            runCatching { sdk.stop() }
+            throw CodedException("E_CAPTURE_FAILED", t.message ?: t.javaClass.simpleName, t)
+          }
+        }
       }
+    }
+
+    Function("getPipelineStats") {
+      capture?.stats() ?: mapOf(
+        "mode" to if (customInput != null) "custom" else "sdk-camera",
+        "nativeHeapMb" to android.os.Debug.getNativeHeapAllocatedSize() / 1_048_576.0,
+      )
     }
 
     AsyncFunction("stop") Coroutine { ->
@@ -112,7 +156,14 @@ class SmartSpectraBridgeModule : Module() {
       scope.launch(Dispatchers.Main) { runCatching { stopInternal() } }
     }
 
+    OnCreate {
+      PreviewHub.listeners += previewSync
+    }
+
     OnDestroy {
+      PreviewHub.listeners -= previewSync
+      runCatching { capture?.stop() }
+      capture = null
       runCatching {
         sdk.processingStatus.removeObserver(statusObserver)
         sdk.validationStatus.removeObserver(validationObserver)
@@ -144,7 +195,16 @@ class SmartSpectraBridgeModule : Module() {
     sdk.config.enableTelemetry = false // matches our "nothing leaves the device" promise
     // Log level left at the SDK default (WARNING): SmartSpectraLogLevel's package
     // isn't documented and isn't needed for the game.
-    sdk.useCamera(CameraSelection.Front)
+    options = o
+    if (o.customCapture) {
+      // We own the camera (and its preview); the SDK only sees our frames.
+      customInput = sdk.useCustomInput(FrameTransform.NONE)
+      sdk.config.previewSurfaceProvider = null
+    } else {
+      customInput = null
+      sdk.useCamera(CameraSelection.Front)
+      sdk.config.previewSurfaceProvider = PreviewHub.current
+    }
 
     val metrics = ArrayList<MetricType>(SmartSpectraConfig.breathingMetrics)
     if (o.cardioMetrics) metrics += SmartSpectraConfig.cardioMetrics
@@ -164,6 +224,9 @@ class SmartSpectraBridgeModule : Module() {
   }
 
   private suspend fun stopInternal() {
+    // Stop feeding frames before the SDK stops, so none arrive mid-teardown.
+    capture?.stop()
+    capture = null
     when (sdk.processingStatus.value) {
       ProcessingStatus.RUNNING, ProcessingStatus.STARTING -> sdk.stop()
       else -> Unit

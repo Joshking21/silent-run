@@ -75,6 +75,10 @@ export default function App() {
             await ss.stop();
             await ss.start('mock');
           }}
+          onRetry={async () => {
+            await ss.stop();
+            await ss.start('live');
+          }}
           onBack={endSession}
         />
       );

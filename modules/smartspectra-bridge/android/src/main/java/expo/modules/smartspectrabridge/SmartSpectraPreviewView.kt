@@ -40,16 +40,15 @@ class SmartSpectraPreviewView(context: Context, appContext: AppContext) :
     super.onAttachedToWindow()
     attached.remove(this)
     attached.add(this)
-    SmartSpectraSdk.shared.config.previewSurfaceProvider = previewView.surfaceProvider
+    PreviewHub.current = previewView.surfaceProvider
   }
 
   override fun onDetachedFromWindow() {
     attached.remove(this)
-    val config = SmartSpectraSdk.shared.config
-    if (config.previewSurfaceProvider === previewView.surfaceProvider) {
+    if (PreviewHub.current === previewView.surfaceProvider) {
       // Hand the surface back to the most recently attached remaining preview
       // (e.g. the app's persistent dock after the Signal Lab closes).
-      config.previewSurfaceProvider = attached.lastOrNull()?.previewView?.surfaceProvider
+      PreviewHub.current = attached.lastOrNull()?.previewView?.surfaceProvider
     }
     super.onDetachedFromWindow()
   }

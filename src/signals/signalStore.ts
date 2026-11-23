@@ -160,10 +160,16 @@ class SignalStore {
         }
       },
       onStatus: (e) => {
+        if (__DEV__ && (e.processing !== this.state.processing || e.quality !== this.state.quality)) {
+          console.log(`[signal] status ${e.processing} ${e.quality} ${e.hint ?? ''}`);
+        }
         this.patch({ processing: e.processing, quality: e.quality, hint: e.hint });
         this.updateValidity();
       },
-      onError: (e) => this.patch({ lastError: e }),
+      onError: (e) => {
+        if (__DEV__) console.warn(`[signal] error ${e.code}: ${e.message}`);
+        this.patch({ lastError: e });
+      },
     });
     await source.start();
   }
